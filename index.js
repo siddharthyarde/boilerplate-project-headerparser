@@ -1,38 +1,65 @@
 // index.js
 // where your node app starts
 
-// init project
 require('dotenv').config();
 var express = require('express');
+var cors = require('cors');
+var dns = require('dns');
+var url = require('url');
+
 var app = express();
 
-// enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing)
-// so that your API is remotely testable by FCC
-var cors = require('cors');
-app.use(cors({ optionsSuccessStatus: 200 })); // some legacy browsers choke on 204
-
-// http://expressjs.com/en/starter/static-files.html
+app.use(cors({ optionsSuccessStatus: 200 }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static('public'));
 
-// http://expressjs.com/en/starter/basic-routing.html
+// In-memory URL store
+var urlDatabase = {};
+var counter = 1;
+
 app.get('/', function (req, res) {
   res.sendFile(__dirname + '/views/index.html');
 });
 
-// your first API endpoint...
-app.get('/api/hello', function (req, res) {
-  res.json({ greeting: 'hello API' });
-});
+app.post('/api/shorturl', function (req, res) {
+  var originalUrl = req.body.url;
 
-app.get('/api/whoami', function (req, res) {
-  res.json({
-    ipaddress: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-    language: req.headers['accept-language'],
-    software: req.headers['user-agent']
+  var parsed;
+  try {
+    parsed = new URL(originalUrl);
+  } catch (e) {
+    return res.json({ error: 'invalid url' });
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return res.json({ error: 'invalid url' });
+  }
+
+  var hostname = parsed.hostname;
+
+  dns.lookup(hostname, function (err) {
+    if (err) {
+      return res.json({ error: 'invalid url' });
+    }
+
+    var shortUrl = counter++;
+    urlDatabase[shortUrl] = originalUrl;
+    res.json({ original_url: originalUrl, short_url: shortUrl });
   });
 });
 
-// listen for requests :)
+app.get('/api/shorturl/:short_url', function (req, res) {
+  var shortUrl = parseInt(req.params.short_url);
+  var originalUrl = urlDatabase[shortUrl];
+
+  if (!originalUrl) {
+    return res.json({ error: 'No short URL found for the given input' });
+  }
+
+  res.redirect(originalUrl);
+});
+
 var listener = app.listen(process.env.PORT || 3000, function () {
   console.log('Your app is listening on port ' + listener.address().port);
 });
